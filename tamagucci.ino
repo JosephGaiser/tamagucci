@@ -1,3 +1,7 @@
+#define USE_TFT_ESPI_LIBRARY
+#define NUMPIXELS 1
+#define TOUCH_CS 15 // Define the TOUCH_CS pin
+
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <I2C_BM8563.h>
@@ -8,9 +12,6 @@
 #include "face_frown.cpp"
 #include "face_frown_b.cpp"
 #include "tImage.h"
-
-#define USE_TFT_ESPI_LIBRARY
-#define NUMPIXELS 1
 
 const int Power = 11;
 const int PIN = 12;
@@ -28,6 +29,10 @@ int blinkCounter = 0;
 int randomBlinkInterval = blinkInterval;
 unsigned long previousMillis = 0;
 bool wasTouched = false;
+
+bool showTime = false;
+unsigned long lastTapTime = 0;
+const unsigned long doubleTapThreshold = 300; // 300 milliseconds for double-tap
 
 void setup() {
     pixels.begin();
@@ -83,10 +88,14 @@ void displayImage(const tImage& image, const tImage& blinkImage) {
 void loop() {
     get_touch();
     sprite.createSprite(240, 240);
-    if (is_happy) {
-        displayImage(face_smile, face_smile_b);
+    if (showTime) {
+        displayTime();
     } else {
-        displayImage(face_frown, face_frown_b);
+        if (is_happy) {
+            displayImage(face_smile, face_smile_b);
+        } else {
+            displayImage(face_frown, face_frown_b);
+        }
     }
     sprite.pushSprite(0, 0);
     sprite.deleteSprite();
@@ -98,24 +107,35 @@ void loop() {
 void get_touch() {
     lv_coord_t touchX, touchY;
     if (chsc6x_is_pressed()) {
-        if (!wasTouched) {
-            chsc6x_get_xy(&touchX, &touchY);
-            if (touchX > 240 || touchY > 240) {
-                touchX = 0;
-                touchY = 0;
-            }
-            is_happy = !is_happy;
-            wasTouched = true;
+        unsigned long currentTapTime = millis();
+        if (currentTapTime - lastTapTime < doubleTapThreshold) {
+            showTime = !showTime;
+            lastTapTime = 0; // Reset last tap time to avoid multiple toggles
+        } else {
+            lastTapTime = currentTapTime;
         }
+        wasTouched = true;
     } else {
         wasTouched = false;
     }
 }
 
+void displayTime() {
+    I2C_BM8563_TimeTypeDef time;
+    rtc.getTime(&time);
+    char timeStr[9];
+    sprintf(timeStr, "%02d:%02d:%02d", time.hours, time.minutes, time.seconds);
+    sprite.fillSprite(TFT_BLACK);
+    sprite.setTextColor(TFT_WHITE);
+    sprite.setTextSize(2);
+    sprite.drawString(timeStr, 60, 110); // Adjust position as needed
+    sprite.pushSprite(0, 0);
+}
+
 void init_rtc() {
     Wire.begin();
     rtc.begin();
-    I2C_BM8563_DateTypeDef date = {11, 7, 2024};
+    I2C_BM8563_DateTypeDef date = {11, 7, 24}; // Use a smaller value for the year
     I2C_BM8563_TimeTypeDef time = {18, 30, 20};
     rtc.setDate(&date);
     rtc.setTime(&time);
