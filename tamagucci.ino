@@ -5,7 +5,7 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <I2C_BM8563.h>
-#include <Adafruit_NeoPixel.h>  
+#include <Adafruit_NeoPixel.h>
 #include "lv_xiao_round_screen.h"
 #include "face_smile.cpp"
 #include "face_smile_b.cpp"
@@ -30,7 +30,7 @@ int randomBlinkInterval = blinkInterval;
 unsigned long previousMillis = 0;
 bool wasTouched = false;
 
-bool showTime = false;
+bool showTime = true;
 unsigned long lastTapTime = 0;
 const unsigned long doubleTapThreshold = 300; // 300 milliseconds for double-tap
 
@@ -74,39 +74,123 @@ void displayImage(const tImage& image, const tImage& blinkImage) {
         sprite.pushImage(0, 0, blinkImage.width, blinkImage.height, (uint16_t*)blinkImage.data);
     }
 }
+I2C_BM8563_DateTypeDef currentDate;
+I2C_BM8563_TimeTypeDef currentTime;
+bool settingTime = false;
+int settingStep = 0;
+
+void displayTimeSettingScreen() {
+    sprite.createSprite(240, 240);
+    sprite.fillSprite(TFT_BLACK);
+    sprite.setTextColor(TFT_WHITE);
+    sprite.setTextSize(2);
+
+    // Display current value based on settingStep
+    char timeStr[9];
+    switch (settingStep) {
+        case 0: sprintf(timeStr, "Month: %02d", currentDate.month); break;
+        case 1: sprintf(timeStr, "Day: %02d", currentDate.date); break;
+        case 2: sprintf(timeStr, "Year: %02d", currentDate.year); break;
+        case 3: sprintf(timeStr, "Hour: %02d", currentTime.hours); break;
+        case 4: sprintf(timeStr, "Min: %02d", currentTime.minutes); break;
+        case 5: sprintf(timeStr, "Sec: %02d", currentTime.seconds); break;
+    }
+    sprite.drawString(timeStr, 60, 110);
+
+    // Draw left and right arrows
+    sprite.fillTriangle(30, 120, 50, 100, 50, 140, TFT_WHITE); // Left arrow
+    sprite.fillTriangle(210, 120, 190, 100, 190, 140, TFT_WHITE); // Right arrow
+
+    // Draw confirm button
+    sprite.fillRect(90, 210, 60, 20, TFT_WHITE);
+    sprite.setTextColor(TFT_BLACK);
+    sprite.drawString("Confirm", 95, 215);
+
+    sprite.pushSprite(0, 0);
+    sprite.deleteSprite();
+}
+
+void updateSettingValue(bool increase) {
+    switch (settingStep) {
+        case 0: currentDate.month += increase ? 1 : -1; break;
+        case 1: currentDate.date += increase ? 1 : -1; break;
+        case 2: currentDate.year += increase ? 1 : -1; break;
+        case 3: currentTime.hours += increase ? 1 : -1; break;
+        case 4: currentTime.minutes += increase ? 1 : -1; break;
+        case 5: currentTime.seconds += increase ? 1 : -1; break;
+    }
+}
+
+const unsigned long longPressThreshold = 2000; // 1000 milliseconds for long press
+unsigned long touchStartTime = 0;
+lv_coord_t touchX = 0, touchY = 0; // Add variables to store touch coordinates
+const unsigned long touchCooldown = 500; // 500 milliseconds cooldown
+unsigned long lastTouchTime = 0;
+
+void get_touch() {
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastTouchTime < touchCooldown) {
+        return; // Skip touch processing if within cooldown period
+    }
+
+    if (chsc6x_is_pressed()) {
+        chsc6x_get_xy(&touchX, &touchY); // Get both X and Y coordinates
+
+        if (touchStartTime == 0) {
+            touchStartTime = millis();
+        }
+        unsigned long currentTapTime = millis();
+        if (settingTime) {
+            // Handle touch for time setting screen
+            if (touchX < 50) {
+                updateSettingValue(false); // Left arrow
+            } else if (touchX > 190) {
+                updateSettingValue(true); // Right arrow
+            } else if (touchY > 200) {
+                settingStep++;
+                if (settingStep > 5) {
+                    settingTime = false;
+                    rtc.setDate(&currentDate);
+                    rtc.setTime(&currentTime);
+                }
+            }
+        } else {
+            wasTouched = true;
+
+            // Check for long press
+            if (currentTapTime - touchStartTime >= longPressThreshold) {
+                settingTime = true;
+                touchStartTime = 0; // Reset touch start time
+            }
+        }
+        lastTouchTime = currentMillis; // Update last touch time
+    } else {
+        wasTouched = false;
+        touchStartTime = 0; // Reset touch start time when touch is released
+    }
+}
 
 void loop() {
     get_touch();
-    sprite.createSprite(240, 240);
-    if (showTime) {
-        displayTime();
+    if (settingTime) {
+        displayTimeSettingScreen();
     } else {
-        if (is_happy) {
-            displayImage(face_smile, face_smile_b);
+        sprite.createSprite(240, 240);
+        if (showTime) {
+            displayTime();
         } else {
-            displayImage(face_frown, face_frown_b);
+            if (is_happy) {
+                displayImage(face_smile, face_smile_b);
+            } else {
+                displayImage(face_frown, face_frown_b);
+            }
         }
-    }
-    sprite.pushSprite(0, 0);
-    sprite.deleteSprite();
 
-    updateBlinkCounter();
-    updateBrightness();
-}
+        sprite.pushSprite(0, 0);
+        sprite.deleteSprite();
 
-void get_touch() {
-    lv_coord_t touchX, touchY;
-    if (chsc6x_is_pressed()) {
-        unsigned long currentTapTime = millis();
-        if (currentTapTime - lastTapTime < doubleTapThreshold) {
-            showTime = !showTime;
-            lastTapTime = 0; // Reset last tap time to avoid multiple toggles
-        } else {
-            lastTapTime = currentTapTime;
-        }
-        wasTouched = true;
-    } else {
-        wasTouched = false;
+        updateBlinkCounter();
+        updateBrightness();
     }
 }
 
@@ -126,11 +210,11 @@ void init_rtc() {
     Wire.begin();
     rtc.begin();
 
-    I2C_BM8563_TimeTypeDef time;
-    rtc.getTime(&time);
+    rtc.getTime(&currentTime);
+    rtc.getDate(&currentDate);
 
     // Check if the RTC is running by verifying if the time is valid
-    if (time.hours == 0 && time.minutes == 0 && time.seconds == 0) {
+    if (currentTime.hours == 0 && currentTime.minutes == 0 && currentTime.seconds == 0) {
         I2C_BM8563_DateTypeDef date = {01, 01, 25}; //  MM DD YY
         I2C_BM8563_TimeTypeDef time = {00, 00, 00};
         rtc.setDate(&date);
