@@ -5,7 +5,7 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <I2C_BM8563.h>
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoPixel.h>  
 #include "lv_xiao_round_screen.h"
 #include "face_smile.cpp"
 #include "face_smile_b.cpp"
@@ -45,14 +45,6 @@ void setup() {
     init_rtc();
 }
 
-void addNoise(uint16_t* imageData, int width, int height, int noiseLevel) {
-    for (int i = 0; i < width * height; ++i) {
-        if (random(0, 100) < noiseLevel) {
-            imageData[i] ^= 0xFFFF;
-        }
-    }
-}
-
 void updateBlinkCounter() {
     blinkCounter++;
     if (blinkCounter >= randomBlinkInterval + blinkDuration) {
@@ -77,10 +69,8 @@ void updateBrightness() {
 
 void displayImage(const tImage& image, const tImage& blinkImage) {
     if (blinkCounter < randomBlinkInterval || blinkCounter >= randomBlinkInterval + blinkDuration) {
-        addNoise((uint16_t*)image.data, image.width, image.height, 5);
         sprite.pushImage(0, 0, image.width, image.height, (uint16_t*)image.data);
     } else {
-        addNoise((uint16_t*)blinkImage.data, blinkImage.width, blinkImage.height, 5);
         sprite.pushImage(0, 0, blinkImage.width, blinkImage.height, (uint16_t*)blinkImage.data);
     }
 }
@@ -127,16 +117,23 @@ void displayTime() {
     sprintf(timeStr, "%02d:%02d:%02d", time.hours, time.minutes, time.seconds);
     sprite.fillSprite(TFT_BLACK);
     sprite.setTextColor(TFT_WHITE);
-    sprite.setTextSize(2);
-    sprite.drawString(timeStr, 60, 110); // Adjust position as needed
+    sprite.setTextSize(3);
+    sprite.drawString(timeStr, 60, 110);
     sprite.pushSprite(0, 0);
 }
 
 void init_rtc() {
     Wire.begin();
     rtc.begin();
-    I2C_BM8563_DateTypeDef date = {11, 7, 24}; // Use a smaller value for the year
-    I2C_BM8563_TimeTypeDef time = {18, 30, 20};
-    rtc.setDate(&date);
-    rtc.setTime(&time);
+
+    I2C_BM8563_TimeTypeDef time;
+    rtc.getTime(&time);
+
+    // Check if the RTC is running by verifying if the time is valid
+    if (time.hours == 0 && time.minutes == 0 && time.seconds == 0) {
+        I2C_BM8563_DateTypeDef date = {01, 01, 25}; //  MM DD YY
+        I2C_BM8563_TimeTypeDef time = {00, 00, 00};
+        rtc.setDate(&date);
+        rtc.setTime(&time);
+    }
 }
