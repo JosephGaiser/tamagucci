@@ -138,6 +138,8 @@ unsigned long touchStartTime = 0;
 lv_coord_t touchX = 0, touchY = 0; // Add variables to store touch coordinates
 const unsigned long touchCooldown = 500; // 500 milliseconds cooldown
 unsigned long lastTouchTime = 0;
+unsigned long showTimeStart = 0;
+const unsigned long showTimeDuration = 15000; // 15 seconds
 
 void get_touch() {
     unsigned long currentMillis = millis();
@@ -176,6 +178,8 @@ void get_touch() {
             } else if (currentTapTime - touchStartTime < longPressThreshold) {
                 // Toggle is_happy on touch if not a long press
                 is_happy = !is_happy;
+                showTime = true;
+                showTimeStart = millis(); // Record the time when the screen was touched
             }
         }
         lastTouchTime = currentMillis; // Update last touch time
@@ -187,12 +191,16 @@ void get_touch() {
 
 void loop() {
     get_touch();
+    unsigned long currentMillis = millis();
     if (settingTime) {
         displayTimeSettingScreen();
     } else {
         sprite.createSprite(240, 240);
         if (showTime) {
             displayDateTime();
+            if (currentMillis - showTimeStart >= showTimeDuration) {
+                showTime = false; // Stop showing time after 15 seconds
+            }
         } else {
             if (is_happy) {
                 displayImage(face_smile, face_smile_b);
