@@ -86,11 +86,11 @@ void displayTimeSettingScreen() {
     sprite.setTextSize(2);
 
     // Display current value based on settingStep
-    char timeStr[9];
+    char timeStr[11];
     switch (settingStep) {
         case 0: sprintf(timeStr, "Month: %02d", currentDate.month); break;
         case 1: sprintf(timeStr, "Day: %02d", currentDate.date); break;
-        case 2: sprintf(timeStr, "Year: %02d", currentDate.year); break;
+        case 2: sprintf(timeStr, "Year: %04d", currentDate.year); break; // Updated to %04d
         case 3: sprintf(timeStr, "Hour: %02d", currentTime.hours); break;
         case 4: sprintf(timeStr, "Min: %02d", currentTime.minutes); break;
         case 5: sprintf(timeStr, "Sec: %02d", currentTime.seconds); break;
@@ -112,12 +112,24 @@ void displayTimeSettingScreen() {
 
 void updateSettingValue(bool increase) {
     switch (settingStep) {
-        case 0: currentDate.month += increase ? 1 : -1; break;
-        case 1: currentDate.date += increase ? 1 : -1; break;
-        case 2: currentDate.year += increase ? 1 : -1; break;
-        case 3: currentTime.hours += increase ? 1 : -1; break;
-        case 4: currentTime.minutes += increase ? 1 : -1; break;
-        case 5: currentTime.seconds += increase ? 1 : -1; break;
+        case 0:
+            currentDate.month = max(1, min(12, currentDate.month + (increase ? 1 : -1)));
+            break;
+        case 1:
+            currentDate.date = max(1, min(31, currentDate.date + (increase ? 1 : -1)));
+            break;
+        case 2:
+            currentDate.year = max(2024, min(2099, currentDate.year + (increase ? 1 : -1))); // Updated range
+            break;
+        case 3:
+            currentTime.hours = max(0, min(23, currentTime.hours + (increase ? 1 : -1)));
+            break;
+        case 4:
+            currentTime.minutes = max(0, min(59, currentTime.minutes + (increase ? 1 : -1)));
+            break;
+        case 5:
+            currentTime.seconds = max(0, min(59, currentTime.seconds + (increase ? 1 : -1)));
+            break;
     }
 }
 
@@ -161,6 +173,9 @@ void get_touch() {
             if (currentTapTime - touchStartTime >= longPressThreshold) {
                 settingTime = true;
                 touchStartTime = 0; // Reset touch start time
+            } else if (currentTapTime - touchStartTime < longPressThreshold) {
+                // Toggle is_happy on touch if not a long press
+                is_happy = !is_happy;
             }
         }
         lastTouchTime = currentMillis; // Update last touch time
@@ -177,7 +192,7 @@ void loop() {
     } else {
         sprite.createSprite(240, 240);
         if (showTime) {
-            displayTime();
+            displayDateTime();
         } else {
             if (is_happy) {
                 displayImage(face_smile, face_smile_b);
@@ -194,15 +209,23 @@ void loop() {
     }
 }
 
-void displayTime() {
+void displayDateTime() {
     I2C_BM8563_TimeTypeDef time;
+    I2C_BM8563_DateTypeDef date;
     rtc.getTime(&time);
+    rtc.getDate(&date);
+
     char timeStr[9];
     sprintf(timeStr, "%02d:%02d:%02d", time.hours, time.minutes, time.seconds);
+
+    char dateStr[11];
+    sprintf(dateStr, "%02d/%02d/%04d", date.month, date.date, date.year);
+
     sprite.fillSprite(TFT_BLACK);
     sprite.setTextColor(TFT_WHITE);
     sprite.setTextSize(3);
-    sprite.drawString(timeStr, 60, 110);
+    sprite.drawString(timeStr, 30, 80);
+    sprite.drawString(dateStr, 30, 140);
     sprite.pushSprite(0, 0);
 }
 
@@ -215,8 +238,8 @@ void init_rtc() {
 
     // Check if the RTC is running by verifying if the time is valid
     if (currentTime.hours == 0 && currentTime.minutes == 0 && currentTime.seconds == 0) {
-        I2C_BM8563_DateTypeDef date = {01, 01, 25}; //  MM DD YY
-        I2C_BM8563_TimeTypeDef time = {00, 00, 00};
+        I2C_BM8563_DateTypeDef date = {01, 01, 24}; // MM DD YY
+        I2C_BM8563_TimeTypeDef time = {00, 00, 00}; // HH MM SS
         rtc.setDate(&date);
         rtc.setTime(&time);
     }
